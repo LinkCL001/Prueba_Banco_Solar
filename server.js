@@ -42,31 +42,23 @@ async function listarUsuarios() {
       return res
     } catch (error_consulta) {
       console.log("Error de conexion: ", error_consulta.code);
-      return error; 
     }    
 }
-
-
-// async function editarUsuario(datos, pool) {
-//   pool.connect(async (error_conexion, client, release) => {
-//     if (error_conexion) return console.log(error_conexion.code);
-
-//     const SQLQuery = {
-//       name: "editarUsuario",
-//       text: "UPDATE usuarios SET nombre = $1, balance = $2 WHERE id = $3 RETURNING *",
-//       values: [...datos, id],
-//     };
-//     try {
-//       const res = await client.query(SQLQuery);
-//       console.log(`Usuario ${res.rows[0].id} editado con éxito`);
-//     } catch (error_consulta) {
-//       console.log("Error de conexion: ", error_consulta.code);
-//     }
-//     release();
-
-//     pool.end();
-//   });
-// }
+async function editarUsuario(data) {
+    const SQLQuery = {
+      rowMode: "array",
+      text: "UPDATE usuarios SET nombre = $2, balance = $3 WHERE id = $1 RETURNING *",
+      values: data,
+    };
+    try {
+      const res = await pool.query(SQLQuery);
+      console.log(`Usuario ${res.rows[0].id} editado con éxito`);
+      return res
+    } catch (error_consulta) {
+      console.log("Error de conexion: ", error_consulta.code);
+      return error_consulta
+    }
+}
 
 // async function borrarUsuario(datos, pool) {
 //   pool.connect(async (error_conexion, client, release) => {
@@ -143,7 +135,7 @@ http
         res.end(data);
       });
     }
-    if (req.url.startsWith("/usuario") && req.method == "POST") {
+    if (req.url.startsWith("/usuario") && req.method === "POST") {
       const nuevoUsuario = (req, res, pool) => {
         let body = "";
         req.on("data", (payload) => {
@@ -158,27 +150,24 @@ http
       };
       nuevoUsuario(req, res, pool);
     }
-    // if (req.url.startsWith("/usuario") && req.method == "PUT") {
-    //   const actualizarUsuario = (req, res, pool) => {
-    //     let body = "";
-    //     req.on("data", (payload) => {
-    //       body = JSON.parse(payload);
-    //     });
-    //     req.on("end", async () => {
-    //       data = [body.id, body.name, body.balance];
-    //       const codigo = await editarUsuario(data, id, pool);
-    //       if (codigo > 0) {
-    //         res.statusCode = 200;
-    //         texto = "Registro editado con éxito!";
-    //       } else {
-    //         res.statusCode = 400;
-    //         texto = "Error para editar el registro";
-    //       }
-    //       res.end(console.log(texto));
-    //     });
-    //   };
-    //   actualizarUsuario(req, res, pool);
-    // }
+    if (req.url.startsWith("/usuario?id=") && req.method === "PUT") {    
+        let body = "";
+        req.on("data", (payload) => {
+          body = JSON.parse(payload);
+        });
+        req.on("end", async () => {
+          data = [body.id, body.nombre, body.balance,]
+          const codigo = await editarUsuario(data);
+          if (codigo > 0) {
+            res.statusCode = 200;
+            texto = "Registro editado con éxito!";
+          } else {
+            res.statusCode = 400;
+            texto = "Error para editar el registro";
+          }
+          res.end(console.log(texto));
+        });
+    }
     // if (req.url.startsWith("/usuario") && req.method == "DELETE") {
     //   const eliminarUsuario = async (req, res, pool) => {
     //     const { id } = url.parse(req.url, true).query;
