@@ -1,4 +1,5 @@
 const { Pool } = require("pg"); //1. Utilizar el paquete pg paraconectarseaPostgreSQLyrealizarconsultasDMLparala gestión y persistencia de datos. (3 Puntos)
+//const { Client } = require("pg");
 const fs = require("fs");
 const http = require("http");
 const url = require("url");
@@ -17,198 +18,231 @@ const config = {
 
 const pool = new Pool(config);
 
-async function insertarUsuario(datos, pool) {
-  pool.connect(async (error_conexion, client, release) => {
-    if (error_conexion) return console.error(error_conexion.code);
-    const SQLQuery = {
-      text: "insert into usuarios (nombre, balance) values ($1,$2) RETURNING *;",
-      values: datos,
-    };
-    try {
-      const res = await client.query(SQLQuery);
-      console.log(`Ultimo Usuario ${res.rows[0].nombre} agregado con éxito.`);
-    } catch (error_consulta) {
-      console.log("! Error consulta !", error_consulta.code);
-    }
-    release()
-  });
-}
+const insertarUsuario = async (data) => {
+  const SQLQuery = {
+    text: "INSERT INTO usuarios (nombre, balance) values ($1,$2) RETURNING *;",
+    values: data,
+  };
+  try {
+    const res = await pool.query(SQLQuery);
+    console.log(`Ultimo Usuario ${res.rows[0].nombre} agregado con éxito.`);
+  } catch (error_consulta) {
+    console.log("! Error consulta !", error_consulta.code);
+    return error_consulta;
+  }
+};
 
-async function listarUsuarios() {
+const getUsuarios = async () => {
   try {
     const res = await pool.query("SELECT * FROM usuarios");
     console.log("Registro actual:", res.rows);
-    return res
+    return res;
   } catch (error_consulta) {
     console.log("Error de conexion: ", error_consulta.code);
     return error_consulta;
   }
-}
-async function editarUsuario(data) {
-  // pool.connect(async (error_conexion, client) => {
-    const SQLQuery = {
-      rowMode: "array",
-      text: "UPDATE usuarios SET nombre = $2, balance = $3 WHERE id = $1 RETURNING *",
-      values: data,
+};
+
+const editUsuario = async (data) => {
+  const SQLQuery = {
+    text: "UPDATE usuarios SET nombre = $1, balance = $2 WHERE id = $3 RETURNING *",
+    values: data,
+  };
+  try {
+    const res = await pool.query(SQLQuery);
+    console.log("Registro Editado: ", res.rows);
+    return res;
+  } catch (error_consulta) {
+    console.log("Error de conexion: ", error_consulta.code);
+  }
+};
+
+const eliminarUsuario = async (id) => {
+  const SQLQuery = {
+    name: "eliminar-usuario",
+    text: "DELETE FROM usuarios WHERE id = $1 RETURNING *;",
+    values: [id],
+  };
+  try {
+    const res = await pool.query(SQLQuery);
+    console.log("Usuario Eliminado: ", res.rows);
+    return res;
+  } catch (error_consulta) {
+    console.log("Error de consulta: ", error_consulta.code);
+    return error_consulta;
+  }
+};
+
+const insertarTransferencia = async (data, client) => {
+  const date = new Date();
+  datos.push(date);
+  try {
+    await client.query("BEGIN");
+    const res = await client.query(
+      "insert into transferencias (emisor, receptor, monto, fecha) values ($1, $2, $3, $4) RETURNING *;",
+      [data[3], data[4], data[2], data[5]]
+    );
+    await client.query("COMMIT");
+    return res;
+  } catch (error_consulta) {
+    console.log("Error de consulta: ", error_consulta.code);
+    await client.query("ROLLBACK");
+  }
+};
+
+const getTransferencias = async () => {
+  const SQLquery = {
+    rowMode: "array",
+    text: `SELECT (select nombre from usuarios where id = emisor) as emisor, (select nombre from usuarios where id = receptor) as receptor, monto, fecha FROM transferencias;`,
+  };
+  try {
+    const result = await pool.query(SQLquery);
+    return result;
+  } catch (error) {
+    console.log(error.code);
+    return error;
+  }
+};
+
+const realizarTransferencia = async (data) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const retiro = {
+      text: "UPDATE usuarios SET balance = balance - $2 WHERE id = $1 RETURNING *;",
+      values: [data[3], data[2]],
     };
-    try {
-      const res = await pool.query(SQLQuery);
-      console.log("Registro Editado: ", res.rows);
-      return res.rows;
-    } catch (error_consulta) {
-      console.log("Error de conexion: ", error_consulta.code);
-    }
-  //   pool.end();
-  // });
-}
-
-async function borrarUsuario(id) {
-  //pool.connect(async (error_conexion, client) => {
-    try {
-      const res = await pool.query(`DELETE FROM usuarios WHERE id = ${id}`);
-      console.log("Usuario Eliminado: ", res.rows);
-      return res.rows;
-    } catch (error_consulta) {
-      console.log("Error de consulta: ", error_consulta.code);
-    }
-    //pool.end();
-  //});
-}
-
-async function insertarTransferencia(datos, pool) {
-  pool.connect(async (error_conexion, client, release) => {
-    if (error_conexion)
-      return console.log("Error de conexion: ", error_conexion.code);
-    try {
-      await client.query("BEGIN");
-      const sumaSaldo = `UPDATE usuarios set balance = balance + ${datos[2]} where nombre = '${datos[1]}';`;
-      await client.query(sumaSaldo);
-      const restaSaldo = `UPDATE usuarios set balance = balance - ${datos[2]} where nombre = '${datos[0]}';`;
-      await client.query(restaSaldo);
-      const transfer = `insert into transferencias (emisor, receptor, monto, fecha) values ((select id from usuarios where nombre = '${nuevaTransferencia[0]}'), (select id from usuarios where nombre = '${nuevaTransferencia[1]}'), ${nuevaTransferencia[2]}, now());`;
-      await client.query(transfer);
-      await client.query("COMMIT");
-    } catch (error_consulta) {
-      console.log("Error de consulta: ", error_consulta.code);
-      await client.query("ROLLBACK");
-    }
-    release();
-
-    pool.end();
-  });
-}
-
-async function consultaTransferencia() {
-  pool.connect(async (error_conexion, client, release) => {
-    if (error_conexion)
-      return console.log("Error de conexion: ", error_conexion.code);
-    try {
-      const consulta = {
-        rowMode: "array",
-        text: `SELECT (select nombre from usuarios where id = emisor) as emisor, (select nombre from usuarios where id = receptor) as receptor, monto, fecha FROM transferencias;`,
-      };
-      await client.query(consulta);
-    } catch (error_consulta) {
-      console.log("Error de consulta: ", error_consulta.code);
-      return error_consulta;
-    }
-    release();
-
-    pool.end();
-  });
-}
+    const deposito = {
+      text: "UPDATE usuarios SET balance = balance + $2 WHERE id = $1 RETURNING *;",
+      values: [data[4], data[2]],
+    };
+    await client.query(retiro);
+    await client.query(deposito);
+    await client.query("COMMIT");
+    const result = await insertarTransferencia(client, data); 
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.log(error);
+  } finally {
+    client.release();
+  }
+};
 
 http
-  .createServer((req, res) => {
+  .createServer(async (req, res) => {
     if (req.url == "/" && req.method === "GET") {
-      res.setHeader("Content-Type", "text/html");
-      fs.readFile("index.html", "utf8", (err, data) => {
-        res.end(data);
-      });
+      try {
+        res.setHeader("Content-Type", "text/html");
+        const html = fs.readFileSync("index.html", "utf8");
+        res.end(html);
+        res.statusCode = 200;
+      } catch (error) {
+        console.log(error.code);
+        res.statusCode = 500;
+        res.statusMessage = "Server Error";
+        return error;
+      }
     }
+
     if (req.url.startsWith("/usuario") && req.method === "POST") {
-      const nuevoUsuario = (req, res, pool) => {
-        let body = "";
-        req.on("data", (payload) => {
-          body = JSON.parse(payload);
-        });
-        req.on("end", async () => {
-          const data = [body.nombre, body.balance];
-          const codigo = insertarUsuario(data, pool);
-          codigo ? (res.statusCode = 201) : (res.statusCode = codigo);
-          res.end();
-        });
-      };
-      nuevoUsuario(req, res, pool);
-    }
-    if (req.url.startsWith("/usuarios") && req.method === "GET") {
-      listarUsuarios()
-        .then((registros) => {
-          registros ? (res.statusCode = 200) : (res.statusCode = 404);
-          res.end(JSON.stringify(registros.rows));
-          console.log(registros);
-        })
-        .catch((err) => console.log(err));
-    }
-    if (req.url.startsWith("/usuario?id=") && req.method === "PUT") {
       let body = "";
       req.on("data", (payload) => {
-        body = JSON.parse(payload);
+        body += payload;
       });
       req.on("end", async () => {
-        data = [body.id, body.nombre, body.balance,];
-        const codigo = await editarUsuario(data);
-        if (codigo > 0) {
+        const data = Object.values(JSON.parse(body));
+        try {
+          const res = await insertarUsuario(data);
           res.statusCode = 200;
-          texto = "Registro editado con éxito!";
-        } else {
-          res.statusCode = 400;
-          texto = "Error para editar el registro";
+          res.end(JSON.stringify(res));
+        } catch (error) {
+          res.statusCode = 500;
+          res.statusMessage = "Error para insertar Usuario";
+          console.log(error.code);
+          return error;
         }
-        res.end(console.log(texto));
       });
     }
-    if (req.url.startsWith("/usuario?id=") && req.method === "DELETE") {
-      const { id } = url.parse(req.url, true).query;
-      const codigo = borrarUsuario(id, pool);
-      let texto = "";
-      if (codigo > 0) {
+
+    if (req.url.startsWith("/usuarios") && req.method === "GET") {
+      try {
+        const result = await getUsuarios();
+        res.setHeader("Content-Type", "application/json");
         res.statusCode = 200;
-        texto = "Registro eliminado con éxito!";
-      } else {
-        res.statusCode = 400;
-        texto = "Error para eliminar el registro";
+        res.end(JSON.stringify(result.rows));
+      } catch (error) {
+        console.log(error.code);
+        res.statusCode = 500;
+        res.statusMessage = "Error para consultar Usuarios";
+        return error;
       }
-      res.end(console.log(texto));
+    }
+
+    if (req.url.includes("/usuario?") && req.method === "PUT") {
+      const { id } = url.parse(req.url, true).query;
+      let body = "";
+      req.on("data", (payload) => {
+        body += payload;
+      });
+      req.on("end", async () => {
+        const data = Object.values(JSON.parse(body));
+        data.push(id);
+        try {
+          const result = await editUsuario(data);
+          res.statusCode = 200;
+          res.end(JSON.stringify(result.rows));
+        } catch (error) {
+          res.statusCode = 500;
+          res.statusMessage = "Error para editar el usuario";
+          console.log(error.code);
+          return error;
+        }
+      });
+    }
+    if (req.url.includes("/usuario?") && req.method === "DELETE") {
+      const { id } = url.parse(req.url, true).query;
+      try {
+        const result = await eliminarUsuario(id);
+        res.statusCode = 200;
+        res.end(JSON.stringify(result.rows));
+      } catch (error) {
+        res.statusCode = 500;
+        res.statusMessage = "Error para eliminar el usuario";
+        console.log(error.code);
+        return error;
+      }
     }
 
     if (req.url.startsWith("/transferencia") && req.method == "POST") {
-      const nuevaTransferencia = (req, res, pool) => {
-        let body = "";
-        req.on("data", (payload) => {
-          body = JSON.parse(payload);
-        });
-        req.on("end", async () => {
-          transferencia = [body.emisor, body.receptor, body.monto];
-          const visual = await insertarTransferencia(transferencia, pool);
-          visual ? (res.statusCode = 201) : (res.statusCode = 500);
-          res.end();
-        });
-      };
-      nuevaTransferencia(req, res, pool);
+      let body = "";
+      req.on("data", (payload) => {
+        body = +payload;
+      });
+      req.on("end", async () => {
+        const data = Object.values(JSON.parse(body));
+        try {
+          const result = await realizarTransferencia(data);
+          res.statusCode = 200;
+          res.end(JSON.stringify(result.rows));
+        } catch (error) {
+          res.statusCode = 500;
+          res.statusMessage = "Error para ingresar transferencia";
+          console.log(error.code);
+          return error;
+        }
+      });
     }
     if (req.url.startsWith("/transferencias") && req.method == "GET") {
-      const listarTransferencia = async (res, pool) => {
-        const registros = await consultaTransferencia(pool);
-        if (registros) {
-          res.statusCode = 200;
-          res.end(JSON.stringify(registros));
-        } else {
-          res.statusCode = 500;
-          res.end();
-        }
-      };
-      listarTransferencia(res, pool);
+      try {
+        const result = await getTransferencias();
+        res.statusCode = 200;
+        res.end(JSON.stringify(result.rows));
+      } catch (error) {
+        res.statusCode = 500;
+        res.statusMessage = "Error consulta de transferencias";
+        console.log(error.code);
+      }
     }
   })
   .listen(3000, () => console.log("Servidor ON en puerto 3000"));
